@@ -367,6 +367,27 @@ Notebooks become thin drivers.
 
 **Branch:** `phase-3/extract-package`
 
+> **Status: done (2026-08-07).** Three deviations from the plan below, each
+> deliberate:
+>
+> 1. **Both arms train under `Trainer`, not `Trainer` + TRL `SFTTrainer`.** Since
+>    `medqa.data` pre-tokenizes both arms, `SFTTrainer` was only wrapping the same
+>    loop — and a comparison whose two arms run different training machinery has a
+>    confound it does not need. Everything that genuinely differs (4-bit, optimiser,
+>    batch shape) now lives in `ModelSpec`. `trl` stays in the dependencies but is
+>    no longer on the training path.
+> 2. **`evaluate.py` computes bits-per-byte and supports `--base` from the start.**
+>    Step 3.5 only asked for computed-not-hardcoded metrics, but writing a metric we
+>    already know is invalid (Phase 6.1) and then rewriting it was the worse order.
+>    Phase 6.1 and 6.2 are now a matter of *running* the CLI, not editing it.
+> 3. **The Phase 3 verify step no longer nbconvert-executes the driver notebook.**
+>    `colab_train.ipynb` asserts a CUDA GPU and shells out to `git clone` — it cannot
+>    run on a Mac by design. It is verified structurally instead: valid JSON, every
+>    code cell parses, all outputs stripped. Real execution belongs in Phase 5, on Colab.
+>
+> `pytest` is 38 passing / 1 network-marked, `ruff check .` is clean, and the
+> scoring path was smoke-tested end-to-end against the real dataset.
+
 ### 3.0 — API compatibility, verified not assumed
 
 Every API the notebooks call, tested against transformers 5.14.1 / trl 1.9.2 on
@@ -501,13 +522,15 @@ comparison table reads that file. Never retype a number a program produced.
 **✅ Verify Phase 3**
 
 ```bash
-pytest -q
-python -c "from medqa.data import load_medquad; d=load_medquad(); print(len(d))"
+pytest                          # 38 passed, 1 deselected (network)
+ruff check .
+python -c "from medqa.data import load_medquad; d=load_medquad(); print(len(d))"   # 16407
 python -c "from medqa.models import DomainChatModel; print('import ok')"
-jupyter nbconvert --to notebook --execute notebooks/colab_train.ipynb --stdout >/dev/null
+python -m medqa.evaluate --table                                  # reads metrics.json
 ```
 
-Open the PR only once all four pass.
+The driver notebook is checked structurally rather than executed — see the status
+note at the top of this phase. Open the PR only once all of the above pass.
 
 ---
 
