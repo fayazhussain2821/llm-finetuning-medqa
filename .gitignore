@@ -1,0 +1,39 @@
+# ── environments ──
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ── macOS ──
+.DS_Store
+
+# ── model weights & data: these belong on the HF Hub, never in git ──
+# git keeps every version of every binary forever; a 9 MB adapter committed
+# ten times is 90 MB you cannot reclaim without rewriting history.
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+checkpoints/
+checkpoint-*/
+outputs/
+runs/
+data/
+gpt2-medqa-lora/
+tinyllama-medqa-qlora/
+
+# ── secrets ──
+.env
+.env.*
+*.token
+*credentials*.json
+
+# ── logs ──
+*.log
+wandb/
