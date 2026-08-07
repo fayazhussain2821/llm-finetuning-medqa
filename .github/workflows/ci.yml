@@ -1,8 +1,11 @@
 name: ci
 
 on:
+  # Every pull request, not just those targeting main. Phases land as a stack
+  # (phase-4 -> phase-3 -> main), and a `branches: [main]` filter would skip CI
+  # on every PR in the stack except the last one — exactly the PRs where a
+  # regression is cheapest to catch.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 
