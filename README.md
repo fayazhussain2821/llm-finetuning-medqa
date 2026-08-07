@@ -53,13 +53,48 @@ a model, never across the two.
 |---|---|---|---|---|
 | `gpt2-base` | — (control) | 0.8049 | 11.51 | 1641 |
 | `gpt2-lora` | yes | 0.5970 | 6.12 | 1641 |
+| `tinyllama-base` | — (control) | 0.6120 | 5.39 | 1641 |
+| `tinyllama-qlora` | yes | 0.3954 | 2.97 | 1641 |
 
 - **gpt2**: fine-tuning cut bits/byte by **25.8%** vs its own base model.
+- **tinyllama**: fine-tuning cut bits/byte by **35.4%** vs its own base model.
 
 Measured 2026-08-07 by `python -m medqa.evaluate`, read from `outputs/metrics.json`.
 Regenerate this block with `python scripts/update_readme_results.py`.
 
 <!-- RESULTS:END -->
+
+### What the controls change
+
+**The original conclusion survives, but not the number, and not the reasoning.**
+
+TinyLlama + QLoRA really is the better model here, and fine-tuning really did help
+it — those parts hold. Three things look different once the controls exist:
+
+**The headline was inflated.** The reported 53% reduction was a perplexity ratio
+across two tokenizers. On bits per byte, fine-tuned GPT-2 to fine-tuned TinyLlama is
+a **33.8%** reduction. Real, but two-thirds the advertised size; the rest was an
+artifact of counting tokens in different units.
+
+**Most of the cross-model gap was never about QLoRA.** Untouched TinyLlama scores
+0.6120 — within a few percent of *fully fine-tuned* GPT-2 at 0.5970. A model that
+never saw one row of MedQuAD essentially matches the baseline arm's finished result,
+because it is ~9× larger and was instruction-tuned before this project began.
+Attributing that gap to the adaptation method was the error the missing control hid.
+
+**But QLoRA did do more work, and now that is separable.** Fine-tuning moved TinyLlama
+35.4% and GPT-2 25.8%, each against its own starting point. That comparison is
+attributable in a way the original 5.99-vs-2.80 never was — it holds the model fixed
+and varies only the training.
+
+So: the right claim is not *"QLoRA cut perplexity 53%"* but *"QLoRA adapted the larger
+model further than LoRA adapted the smaller one, on a base that was already ahead."*
+That is a weaker sentence and a true one.
+
+As a sanity check on the rewrite, the fine-tuned perplexities here (6.12 and 2.97)
+land close to the originally reported 5.99 and 2.80, despite scoring only the answer
+span. The pipeline reproduces the original run; it just refuses to compare the two
+numbers the way the original did.
 
 ---
 
