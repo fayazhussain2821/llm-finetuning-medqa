@@ -6,4 +6,3 @@
 # evidence of the reported results (loss curves, perplexity, sample generations).
 # Keep them byte-for-byte as pulled from Drive — do not strip.
 notebooks/original/**.ipynb -filter -diff
-

@@ -32,7 +32,11 @@ target-version = "py311"
 # Notebooks are drivers, not library code: `import gc, torch` and `a(); b()` are
 # idiomatic in a cell and unhelpful to fight. `notebooks/original/` is a frozen
 # reference copy and must not be reformatted at all. nbstripout guards these.
-extend-exclude = ["notebooks"]
+#
+# Markdown is excluded because `ruff format` rewrites Python inside fenced blocks.
+# ROADMAP.md *quotes the original buggy notebook code* as evidence; reformatting a
+# quotation silently edits the record it exists to preserve.
+extend-exclude = ["notebooks", "*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
