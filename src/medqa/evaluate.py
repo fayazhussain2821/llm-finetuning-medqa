@@ -190,6 +190,41 @@ def comparison_table(path: Path = config.METRICS_PATH) -> str:
     return "\n".join(lines)
 
 
+def markdown_table(path: Path = config.METRICS_PATH) -> str:
+    """The same numbers as `comparison_table`, formatted for the README.
+
+    The README quotes this command's output rather than restating figures by hand,
+    so there is exactly one place a result can come from.
+    """
+    if not path.exists():
+        return f"_No metrics recorded yet ({path})._"
+    runs = json.loads(path.read_text())
+
+    lines = [
+        "| run | fine-tuned | bits/byte ↓ | perplexity | eval rows |",
+        "|---|---|---|---|---|",
+    ]
+    for name, m in sorted(runs.items()):
+        tuned = "yes" if m.get("fine_tuned") else "— (control)"
+        lines.append(
+            f"| `{name}` | {tuned} | {m['bits_per_byte']:.4f} "
+            f"| {m['perplexity']:.2f} | {m['n_examples']} |"
+        )
+
+    lines.append("")
+    for key in sorted({m["model"] for m in runs.values()}):
+        ft = runs.get(f"{key}-lora") or runs.get(f"{key}-qlora")
+        bs = runs.get(f"{key}-base")
+        if ft and bs:
+            delta = (bs["bits_per_byte"] - ft["bits_per_byte"]) / bs["bits_per_byte"] * 100
+            lines.append(
+                f"- **{key}**: fine-tuning cut bits/byte by **{delta:.1f}%** vs its own base model."
+            )
+        elif ft:
+            lines.append(f"- **{key}**: no control measured — the improvement is unattributable.")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", choices=sorted(config.MODEL_SPECS))
@@ -197,6 +232,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--adapter", help="local dir or Hub repo id; defaults to outputs/ then Hub")
     parser.add_argument("--limit", type=int, help="score only N eval rows (smoke test)")
     parser.add_argument("--table", action="store_true", help="print metrics.json and exit")
+    parser.add_argument("--markdown", action="store_true", help="render the table for the README")
     args = parser.parse_args(argv)
 
     if args.model:
@@ -204,10 +240,10 @@ def main(argv: list[str] | None = None) -> None:
             args.model, base=args.base, adapter=args.adapter, limit=args.limit
         )
         write_metrics(run_name, metrics)
-    elif not args.table:
-        parser.error("pass --model to measure, or --table to report")
+    elif not (args.table or args.markdown):
+        parser.error("pass --model to measure, or --table / --markdown to report")
 
-    print(comparison_table())
+    print(markdown_table() if args.markdown else comparison_table())
 
 
 if __name__ == "__main__":
