@@ -51,3 +51,7 @@ def test_specs_are_frozen():
     the adapter, which is the whole point of saving it."""
     with pytest.raises(dataclasses.FrozenInstanceError):
         config.GPT2.per_device_batch_size = 99
+
+
+def test_deliberately_broken_to_prove_ci_blocks():
+    assert 1 == 2
