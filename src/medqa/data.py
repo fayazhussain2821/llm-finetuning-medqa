@@ -46,6 +46,16 @@ def split_dataset(dataset: Dataset, seed: int = config.SEED) -> DatasetDict:
     return dataset.train_test_split(test_size=config.TEST_SIZE, seed=seed)
 
 
+def held_out(limit: int | None = None) -> Dataset:
+    """The evaluation rows, in a fixed order, shared by every measurement.
+
+    `limit` takes the first N — not a random sample — so a 200-row generation run
+    and a 200-row rerun score the *same* questions and stay comparable.
+    """
+    evaluation = split_dataset(format_examples(load_medquad()))["test"]
+    return evaluation.select(range(min(limit, len(evaluation)))) if limit else evaluation
+
+
 def to_chat_text(dataset: Dataset, tokenizer) -> Dataset:
     """Re-render the same examples with the model's native chat template."""
     if tokenizer.chat_template is None:

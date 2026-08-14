@@ -74,6 +74,26 @@ def test_write_metrics_merges_across_runs(tmp_path):
     assert set(written) == {"gpt2-lora", "tinyllama-qlora"}
 
 
+def test_write_metrics_preserves_answer_quality_for_the_same_arm(tmp_path):
+    """Re-scoring likelihood must not delete a generation run that took an hour."""
+    path = tmp_path / "metrics.json"
+    evaluate.update_metrics("gpt2-lora", {"quality": {"rouge_l_f1": 0.2}}, path)
+    evaluate.write_metrics("gpt2-lora", {"bits_per_byte": 0.59}, path)
+
+    entry = json.loads(path.read_text())["gpt2-lora"]
+    assert entry["quality"] == {"rouge_l_f1": 0.2}
+    assert entry["bits_per_byte"] == 0.59
+
+
+def test_write_metrics_supersedes_its_own_stale_numbers(tmp_path):
+    """Merging must not let an old measurement survive a rerun of the same field."""
+    path = tmp_path / "metrics.json"
+    evaluate.write_metrics("gpt2-lora", {"bits_per_byte": 9.99}, path)
+    evaluate.write_metrics("gpt2-lora", {"bits_per_byte": 0.59}, path)
+
+    assert json.loads(path.read_text())["gpt2-lora"]["bits_per_byte"] == 0.59
+
+
 def test_comparison_table_reads_the_file_not_hardcoded_numbers(tmp_path):
     """The bug this module exists to kill: cell 30's `gpt2_ppl, tiny_ppl = 5.99, 2.80`."""
     path = tmp_path / "metrics.json"

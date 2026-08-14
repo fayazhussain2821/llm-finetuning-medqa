@@ -24,10 +24,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from datetime import date
 from pathlib import Path
 
 import torch
-from peft import PeftModel
 
 from medqa import config, data, models
 
@@ -36,12 +36,14 @@ LN2 = math.log(2.0)
 
 def _prompt_and_full_text(ex: dict, spec: config.ModelSpec, tokenizer) -> tuple[str, str]:
     """The prompt, and the prompt+answer it must be a prefix of."""
+    question = ex["question"].strip()
+    prompt = models.build_prompt(question, spec, tokenizer)
     if spec.prompt_style == "chat":
-        user = [{"role": "user", "content": ex["question"]}]
-        both = user + [{"role": "assistant", "content": ex["answer"]}]
-        prompt = tokenizer.apply_chat_template(user, tokenize=False, add_generation_prompt=True)
+        both = [
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": ex["answer"]},
+        ]
         return prompt, tokenizer.apply_chat_template(both, tokenize=False)
-    prompt = config.PROMPT_TEMPLATE.format(q=ex["question"])
     return prompt, prompt + ex["answer"]
 
 
@@ -133,35 +135,47 @@ def evaluate_model(
     """Score one arm. `base=True` gives the untrained control condition."""
     spec = config.get_spec(model_key)
     tokenizer = data.get_tokenizer(spec.base_id)
+    eval_ds = data.held_out(limit)
 
-    formatted = data.format_examples(data.load_medquad())
-    eval_ds = data.split_dataset(formatted)["test"]
-    if limit:
-        eval_ds = eval_ds.select(range(min(limit, len(eval_ds))))
-
-    if base:
-        run_name, model = f"{spec.key}-base", models.load_base_model(spec)
-    else:
-        if adapter is None:
-            # prefer a locally trained adapter; fall back to the published one
-            adapter = spec.output_dir if spec.output_dir.exists() else spec.hub_repo
-        adapter = str(adapter)
-        run_name = f"{spec.key}-{'qlora' if spec.load_in_4bit else 'lora'}"
-        model = PeftModel.from_pretrained(models.load_base_model(spec), adapter)
-        model.eval()
+    run_name, model = models.load_arm(spec, base=base, adapter=adapter)
 
     metrics = score_dataset(model, tokenizer, eval_ds, spec)
-    metrics.update({"model": spec.key, "base_id": spec.base_id, "fine_tuned": not base})
+    metrics.update(
+        {
+            "model": spec.key,
+            "base_id": spec.base_id,
+            "fine_tuned": not base,
+            # when, recorded by the run itself — the README states this date, and
+            # a rerun of one arm must not silently redate the others
+            "measured_on": date.today().isoformat(),
+        }
+    )
     return run_name, metrics
 
 
-def write_metrics(run_name: str, metrics: dict, path: Path = config.METRICS_PATH) -> None:
-    """Merge into metrics.json so separate runs accumulate instead of clobbering."""
+def update_metrics(run_name: str, patch: dict, path: Path = config.METRICS_PATH) -> None:
+    """Merge fields into one arm's entry, keeping every other field it already has.
+
+    Separate measurements — likelihood here, answer quality in `quality.py` —
+    accumulate in one place per arm instead of overwriting each other.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = json.loads(path.read_text()) if path.exists() else {}
-    existing[run_name] = metrics
+    existing.setdefault(run_name, {}).update(patch)
     path.write_text(json.dumps(existing, indent=2))
-    print(f"wrote {run_name} → {path}")
+    print(f"updated {run_name} → {path}")
+
+
+def write_metrics(run_name: str, metrics: dict, path: Path = config.METRICS_PATH) -> None:
+    """Record one arm's likelihood numbers in metrics.json.
+
+    Merges rather than replaces, on two levels. Evaluating TinyLlama must not
+    erase GPT-2; and re-running the likelihood pass must not erase the *answer
+    quality* measured separately for the same arm (`quality.py`), which is
+    expensive to reproduce and lives in the same entry. Every field this function
+    computes is overwritten, so a rerun still supersedes stale numbers.
+    """
+    update_metrics(run_name, metrics, path)
 
 
 def comparison_table(path: Path = config.METRICS_PATH) -> str:

@@ -600,6 +600,32 @@ gh api -X PUT repos/fayazhussain2821/llm-finetuning-medqa/rulesets/RULESET_ID ..
 
 Add `required_status_checks` for the `ci` job. Now a red build genuinely blocks merge.
 
+> **Status: done (2026-08-14), and Step 2.5 with it.** The `protect-main` ruleset
+> (id 20874437) was never actually created in Phase 2, so `main` was unprotected the
+> whole time. It exists now, with `pull_request` (0 approvals), `deletion`,
+> `non_fast_forward`, and `required_status_checks` on the `ci` context.
+> `current_user_can_bypass: never`.
+>
+> **Why CI had never run once, despite being green locally since Phase 4.** GitHub
+> only registers a workflow after the file exists on the *default* branch. `ci.yml`
+> lived on `phase-4/ci` and its descendants, never on `main`, so every PR in the stack
+> reported "no checks" — including a brand-new PR whose own branch contained the
+> workflow, and a close/reopen to force a `pull_request` event. Zero runs, no error
+> message, nothing in the Actions tab to explain it. The first run in the repo's
+> history fired the moment PR #2 merged and put `ci.yml` on `main` (58s, green).
+>
+> Consequence for a stacked workflow: **the PR that introduces CI can never be gated
+> by it.** PRs #1 and #2 were verified by running CI's exact commands locally against
+> each branch instead; #3 and #4 got real checks. Worth knowing before designing
+> another stack that defers CI to a later phase.
+>
+> Note also that retargeting a PR fires an `edited` event, which is not a default
+> `pull_request` trigger — closing and reopening is what actually starts a run.
+>
+> The verify step below was carried out: PR #5, one deliberately failing test, CI red
+> in 44s, `gh pr merge` refused with "the base branch policy prohibits the merge".
+> Closed and branch deleted.
+
 **✅ Verify Phase 4** — open a throwaway PR that breaks a test on purpose; confirm
 merge is blocked. Then close it.
 
@@ -739,6 +765,76 @@ task metric:
   informative than either automated metric.
 
 📚 [HF Evaluate](https://huggingface.co/docs/evaluate) · [BERTScore](https://arxiv.org/abs/1904.09675)
+
+> **Status: done (2026-08-14)** — `src/medqa/quality.py`, all four arms, 200 held-out
+> rows each, greedy decoding. ROUGE-L F1 and token F1 against the reference, plus a
+> repeated-4-gram rate to catch degeneration and a length/empty check. Every
+> generation is kept in `outputs/generations/<run>.jsonl`, which is what makes the
+> hand-scored option below possible later.
+>
+> **The finding this phase was worth doing for: the two metrics disagree on rank
+> order.** On likelihood, fine-tuned GPT-2 (0.5970 bits/byte) beat untouched TinyLlama
+> (0.6120). On generated answers, untouched TinyLlama beats fine-tuned GPT-2 by 59% on
+> ROUGE-L. Phase 6.2's control looked like a near-tie and is not one.
+>
+> Four things worth recording:
+>
+> 1. **ROUGE-L was implemented here rather than pulled in.** `rouge-score` drags in
+>    nltk and absl-py for ~40 lines of LCS, and both lockfiles would need recompiling.
+>    The expected values in `test_quality.py` were produced by running the real
+>    `rouge_score` 0.1.2 in a throwaway venv, so the check costs no dependency but is
+>    still anchored to the reference implementation. One value hand-derived first was
+>    wrong (0.3636, not 0.3333) — worth remembering before trusting arithmetic done in
+>    a docstring.
+> 2. **No degeneration anywhere** (repeated 4-grams 0.0000–0.0146). The failure this
+>    metric was added to catch did not occur. The models are not incoherent, they are
+>    wrong — which only reading the jsonl reveals.
+> 3. **Length ratio is confounded with the token cap.** 163/200 GPT-2 answers run to
+>    the 200-token ceiling versus 12/200 for TinyLlama, so that column measures
+>    stopping behaviour, not verbosity.
+> 4. **`write_metrics` had to stop clobbering.** It replaced an arm's whole entry, so
+>    re-running the likelihood pass would have silently deleted an hour of
+>    generations. It merges now, and two tests hold that.
+>
+> **The hand-scored set (2026-08-14).** `src/medqa/review.py` builds a blinded sheet:
+> 20 held-out questions, all four answers shuffled per question and labelled A–D, the
+> unblinding key written to a separate file. Rated 1–5 for factual soundness against
+> the reference. `--report` unblinds, aggregates, and prints paired bootstrap
+> intervals, because every arm answered the same questions.
+>
+> **Ratings so far are an LLM-judge pass, not a human one** — produced by the same
+> assistant that wrote the harness, which is precisely the independence the exercise
+> needs. `outputs/review/sheet.md` is ready for a human pass; that is the open item.
+>
+> | comparison | mean Δ | 95% CI | W/L/T | detected? |
+> |---|---|---|---|---|
+> | `gpt2-lora` − `gpt2-base` | −0.25 | [−0.65, +0.10] | 3/6/11 | **no** |
+> | `tinyllama-qlora` − `tinyllama-base` | +0.40 | [−0.10, +0.90] | 10/4/6 | **no** |
+> | `tinyllama-base` − `gpt2-lora` | +1.10 | [+0.55, +1.65] | 12/2/6 | yes |
+> | `tinyllama-qlora` − `gpt2-lora` | +1.50 | [+1.10, +1.95] | 17/0/3 | yes |
+>
+> **Neither fine-tuning run shows a detectable effect on whether the answers are
+> true.** Both within-model intervals span zero, while bits per byte reports 25.8%
+> and 35.4% gains and ROUGE-L reports +21.8% and +51.0%. GPT-2's point estimate is
+> mildly negative: LoRA taught it MedQuAD's register, and register is what the
+> automatic metrics score. What *is* unambiguous is the comparison the project was
+> controlling for rather than testing — untouched TinyLlama beats fine-tuned GPT-2
+> by +1.10, and fine-tuned TinyLlama wins 17 of 20 against it, losing none.
+>
+> Absolute numbers matter more than the deltas: `gpt2-lora` contradicts the reference
+> or invents an entity in **95%** of answers, the best arm in **40%**. Observed
+> failures include Marfan syndrome attributed to "an infection", congenital stromal
+> corneal dystrophy attributed to `COL4A1` (it is `DCN`), Chagas transmitted by
+> "ticks or fleas", a fabricated `FHNV` gene, and a citation to a Johns Hopkins
+> doctor who does not appear to exist.
+>
+> Design notes worth keeping: the sheet shuffles **per question**, not once, or a
+> rater learns "C is the good one" and scores the label; and `--report` reports
+> `spans_zero` as the headline, because a bare mean over 20 questions invites reading
+> a gap that a rerun would not reproduce.
+>
+> Still open: an independent (human or third-party-model) pass, and a larger sample —
+> n=20 cannot resolve the +0.40 that may well be real.
 
 ### 6.4 — Report variance
 
