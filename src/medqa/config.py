@@ -21,6 +21,13 @@ else:
 
 OUTPUT_DIR = ROOT / "outputs"
 METRICS_PATH = OUTPUT_DIR / "metrics.json"
+GENERATIONS_DIR = OUTPUT_DIR / "generations"
+
+# Generation is ~1000x slower per row than a scoring forward pass, so answer
+# quality is measured on a prefix of the held-out set rather than all of it.
+# Fixed order, so every arm is asked the same questions.
+QUALITY_N = 200
+QUALITY_MAX_NEW_TOKENS = 200
 
 # HF_USER is read from the environment, never hardcoded — otherwise anyone who
 # clones this repo silently loads *Fayaz's* adapters from the Hub.

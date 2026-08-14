@@ -116,6 +116,28 @@ def load_for_training(spec: config.ModelSpec, tokenizer):
     return model
 
 
+def build_prompt(question: str, spec: config.ModelSpec, tokenizer) -> str:
+    """The exact text an arm is asked with.
+
+    One definition, used by scoring, generation and the demo alike. When these
+    drifted apart in the notebooks, the demo was answering a differently-worded
+    question than the one the metric was computed on.
+    """
+    question = question.strip()
+    if spec.prompt_style == "chat":
+        return tokenizer.apply_chat_template(
+            [{"role": "user", "content": question}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+    return config.PROMPT_TEMPLATE.format(q=question)
+
+
+def resolve_adapter(spec: config.ModelSpec) -> str:
+    """Prefer a locally trained adapter; fall back to the published one."""
+    return str(spec.output_dir if spec.output_dir.exists() else spec.hub_repo)
+
+
 def load_base_model(spec: config.ModelSpec, device: str | None = None):
     """The *un*-fine-tuned base model — the control condition Phase 6.2 needs."""
     device = device or best_device()
@@ -131,6 +153,27 @@ def load_base_model(spec: config.ModelSpec, device: str | None = None):
         model = model.to(device)
     model.eval()
     return model
+
+
+def load_arm(
+    spec: config.ModelSpec,
+    base: bool = False,
+    adapter: str | Path | None = None,
+    device: str | None = None,
+) -> tuple[str, object]:
+    """One arm of the 2x2, plus the run name it is recorded under.
+
+    `base=True` is the untrained control. Returning the name from the same call
+    that loads the weights means a metric can never be filed against the wrong
+    arm — the two facts come from one place.
+    """
+    if base:
+        return f"{spec.key}-base", load_base_model(spec, device)
+
+    adapter = str(adapter) if adapter is not None else resolve_adapter(spec)
+    model = PeftModel.from_pretrained(load_base_model(spec, device), adapter)
+    model.eval()
+    return f"{spec.key}-{'qlora' if spec.load_in_4bit else 'lora'}", model
 
 
 # ── inference ──────────────────────────────────────────────────────────
@@ -178,14 +221,7 @@ class DomainChatModel:
         self.model.config.use_cache = True  # KV cache back on for fast generation
 
     def build_prompt(self, question: str) -> str:
-        question = question.strip()
-        if self.spec.prompt_style == "chat":
-            return self.tokenizer.apply_chat_template(
-                [{"role": "user", "content": question}],
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-        return config.PROMPT_TEMPLATE.format(q=question)
+        return build_prompt(question, self.spec, self.tokenizer)
 
     @torch.no_grad()
     def generate(self, question: str, preset: GenerationPreset | None = None) -> str:

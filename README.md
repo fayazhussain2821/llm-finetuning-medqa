@@ -96,6 +96,62 @@ land close to the originally reported 5.99 and 2.80, despite scoring only the an
 span. The pipeline reproduces the original run; it just refuses to compare the two
 numbers the way the original did.
 
+### But does it answer the question?
+
+Everything above is likelihood: how much probability an arm put on the reference
+answer. It never asks the model to write one. That hides two failures — a model that
+loops, and a model that writes fluent prose about the wrong condition — because
+neither costs anything when you are only scoring the reference tokens.
+
+So each arm was made to answer, greedily, and the text was compared with the reference.
+
+<!-- QUALITY:BEGIN -->
+Greedy decoding, ≤200 new tokens, the first 200 held-out rows —
+the same questions for every arm. Likelihood says how plausible the reference was;
+these say what the model actually wrote when asked.
+
+| run | ROUGE-L F1 ↑ | token F1 ↑ | repeated 4-grams ↓ | length ratio | empty | n |
+|---|---|---|---|---|---|---|
+| `gpt2-base` | 0.0797 | 0.1666 | 0.0000 | 0.71 | 0.0% | 200 |
+| `gpt2-lora` | 0.0971 | 0.2060 | 0.0005 | 0.80 | 0.0% | 200 |
+| `tinyllama-base` | 0.1548 | 0.2718 | 0.0101 | 0.55 | 0.0% | 200 |
+| `tinyllama-qlora` | 0.2337 | 0.3435 | 0.0146 | 0.52 | 0.0% | 200 |
+
+Measured 2026-08-14 by `python -m medqa.quality`. Every generation is kept in
+`outputs/generations/<run>.jsonl` — the summary is a number, that file is the evidence.
+
+<!-- QUALITY:END -->
+
+**The two metrics rank the arms differently, and that is the point.**
+
+On likelihood, fine-tuned GPT-2 (0.5970 bits/byte) edges out *untouched* TinyLlama
+(0.6120). Ask them both to actually write an answer and the order reverses, hard: the
+untouched model beats the fully fine-tuned one by **59% on ROUGE-L** and **32% on token
+F1**. A whole epoch of LoRA on MedQuAD does not buy GPT-2 what TinyLlama had before the
+project started. Likelihood made that gap look like a tie; generation shows it is not.
+
+Everything else the controls established still holds, and holds more strongly.
+Fine-tuning lifts ROUGE-L **+21.8%** for GPT-2 and **+51.0%** for TinyLlama, each
+against its own base — the same ordering as bits per byte, measured a completely
+different way. Two independent metrics agreeing on the within-model effect is worth
+more than either one alone.
+
+**What the degeneration numbers say: nothing is looping.** Repeated 4-grams sit at
+0.0000–0.0146 everywhere, so the "model stuck in a cycle" failure this metric exists to
+catch did not occur in any arm. That is a real negative result, and it narrows things
+usefully — the models' problem is not incoherence, it is being wrong. Reading
+`outputs/generations/gpt2-lora.jsonl` shows what that looks like: fluent, well-formed,
+and claiming Tourette syndrome causes "severe muscle weakness, paralysis". No automatic
+metric here penalises that. A human reading the file is still the only thing that does.
+
+**Two caveats on these numbers.** Length ratio is confounded with the 200-token
+generation cap. 163 of GPT-2's 200 answers run to within a few words of the ceiling
+because it rarely emits a stop token, against 12 of TinyLlama's — so 0.80-vs-0.52
+measures *stopping behaviour* far more than verbosity, and should not be read as
+GPT-2 matching the reference length more closely. And ROUGE-L rewards phrasing that
+matches MedQuAD's house style, which fine-tuning teaches directly; part of the
+within-model gain is register, not knowledge.
+
 ---
 
 ## Reproducing this
@@ -125,9 +181,19 @@ python -m medqa.evaluate --model tinyllama --base
 python -m medqa.evaluate --table                      # print what was measured
 ```
 
-Every result is computed into `outputs/metrics.json`; the tables above and below are
-rendered from that file by `python -m medqa.evaluate --markdown`. No figure in this
-README was typed by hand.
+Answer quality generates rather than scores, so it is slower and runs on a subset:
+
+```bash
+python -m medqa.quality --model gpt2                  # fine-tuned
+python -m medqa.quality --model gpt2       --base     # control
+python -m medqa.quality --model tinyllama
+python -m medqa.quality --model tinyllama  --base
+python -m medqa.quality --table                       # print what was measured
+```
+
+Every result is computed into `outputs/metrics.json`, and every generation into
+`outputs/generations/`. The tables above and below are rendered from that file by
+`python scripts/update_readme_results.py`. No figure in this README was typed by hand.
 
 The demo:
 
@@ -143,7 +209,8 @@ src/medqa/
   data.py       load → format → seeded split → tokenize
   models.py     DomainChatModel and the named generation presets
   train.py      one CLI, both arms
-  evaluate.py   scoring → metrics.json
+  evaluate.py   likelihood scoring → metrics.json
+  quality.py    generate, then ROUGE-L / token-F1 / degeneration → metrics.json
 app/demo.py     Gradio side-by-side
 notebooks/
   colab_train.ipynb   thin driver — orchestration only
@@ -185,10 +252,14 @@ while there is still time to stop.
 
 - **One epoch, one seed, one run per arm.** No variance estimate, so small differences
   between arms should not be read as real.
-- **Perplexity and bits-per-byte measure likelihood, not correctness.** A model can
-  score well by matching the dataset's register and phrasing while still being wrong.
-  Nothing here evaluates factual accuracy, and for medical content that is the gap
-  that matters most.
+- **Nothing here evaluates factual accuracy.** Bits per byte measures likelihood;
+  ROUGE-L and token F1 measure word overlap with one reference answer. All three
+  reward matching the dataset's register and phrasing, and none of them can tell a
+  correct medical claim from a fluent false one. For medical content that is the gap
+  that matters most, and it is still open. `outputs/generations/` exists so the
+  answers can at least be read.
+- **One reference answer per question.** A correct answer phrased differently, or a
+  correct answer MedQuAD happens not to give, scores as a miss.
 - **MedQuAD is authoritative but narrow** — NIH-sourced, US-centric, and frozen at
   collection time. Neither model knows anything more recent.
 - **~5% of examples exceed GPT-2's 1024-token context** and are truncated. That ceiling

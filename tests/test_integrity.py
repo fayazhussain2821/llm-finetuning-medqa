@@ -7,7 +7,7 @@ that survives to the README.
 
 from datasets import Dataset
 
-from medqa import config, data
+from medqa import config, data, evaluate, models
 
 
 def _wide_dataset(n: int = 300) -> Dataset:
@@ -65,6 +65,16 @@ def test_eval_set_is_identical_across_model_arms():
     first = data.split_dataset(formatted)["test"]["question"]
     second = data.split_dataset(formatted)["test"]["question"]
     assert first == second
+
+
+def test_generation_and_scoring_ask_the_same_question(tokenizer):
+    """The likelihood metric scores the span after a prompt; the quality metric
+    generates from one. If those two prompts ever drift apart, the two numbers
+    describe different experiments and neither table would say so."""
+    ex = {"question": "  What is anemia?  ", "answer": "Low iron."}
+    for spec in (config.GPT2, config.TINYLLAMA):
+        scored_prompt, _ = evaluate._prompt_and_full_text(ex, spec, tokenizer)
+        assert models.build_prompt(ex["question"], spec, tokenizer) == scored_prompt
 
 
 def test_config_paths_resolve_locally():

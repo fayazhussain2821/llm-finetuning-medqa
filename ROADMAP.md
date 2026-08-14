@@ -740,6 +740,39 @@ task metric:
 
 📚 [HF Evaluate](https://huggingface.co/docs/evaluate) · [BERTScore](https://arxiv.org/abs/1904.09675)
 
+> **Status: done (2026-08-14)** — `src/medqa/quality.py`, all four arms, 200 held-out
+> rows each, greedy decoding. ROUGE-L F1 and token F1 against the reference, plus a
+> repeated-4-gram rate to catch degeneration and a length/empty check. Every
+> generation is kept in `outputs/generations/<run>.jsonl`, which is what makes the
+> hand-scored option below possible later.
+>
+> **The finding this phase was worth doing for: the two metrics disagree on rank
+> order.** On likelihood, fine-tuned GPT-2 (0.5970 bits/byte) beat untouched TinyLlama
+> (0.6120). On generated answers, untouched TinyLlama beats fine-tuned GPT-2 by 59% on
+> ROUGE-L. Phase 6.2's control looked like a near-tie and is not one.
+>
+> Four things worth recording:
+>
+> 1. **ROUGE-L was implemented here rather than pulled in.** `rouge-score` drags in
+>    nltk and absl-py for ~40 lines of LCS, and both lockfiles would need recompiling.
+>    The expected values in `test_quality.py` were produced by running the real
+>    `rouge_score` 0.1.2 in a throwaway venv, so the check costs no dependency but is
+>    still anchored to the reference implementation. One value hand-derived first was
+>    wrong (0.3636, not 0.3333) — worth remembering before trusting arithmetic done in
+>    a docstring.
+> 2. **No degeneration anywhere** (repeated 4-grams 0.0000–0.0146). The failure this
+>    metric was added to catch did not occur. The models are not incoherent, they are
+>    wrong — which only reading the jsonl reveals.
+> 3. **Length ratio is confounded with the token cap.** 163/200 GPT-2 answers run to
+>    the 200-token ceiling versus 12/200 for TinyLlama, so that column measures
+>    stopping behaviour, not verbosity.
+> 4. **`write_metrics` had to stop clobbering.** It replaced an arm's whole entry, so
+>    re-running the likelihood pass would have silently deleted an hour of
+>    generations. It merges now, and two tests hold that.
+>
+> Still open from the list above: LLM-as-judge and the hand-scored set. Neither
+> automatic metric here can tell a correct medical claim from a fluent false one.
+
 ### 6.4 — Report variance
 
 Single-seed results are anecdotes. Run three seeds, report mean ± std. If the gap
