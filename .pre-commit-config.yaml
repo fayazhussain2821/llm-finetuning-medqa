@@ -1,0 +1,39 @@
+# Catching things locally is strictly cheaper than catching them in CI.
+#   pre-commit install        (once, after cloning)
+#   pre-commit run --all-files
+default_language_version:
+  python: python3.11
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep in step with the ruff pinned in requirements*.txt. If the hook and the
+    # CI ruff disagree on a version, they disagree on formatting, and every commit
+    # ping-pongs between them.
+    rev: v0.16.1
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      - id: nbstripout
+        # notebooks/original/ is the historical record — its outputs ARE the
+        # evidence of the reported results. .gitattributes exempts it from the
+        # filter; this keeps the hook consistent with that.
+        exclude: ^notebooks/original/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        # adapters belong on the HF Hub; git keeps every version of a binary forever
+        args: [--maxkb=1024]
+      - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+        exclude: ^notebooks/original/
+      - id: trailing-whitespace
+        exclude: ^notebooks/original/

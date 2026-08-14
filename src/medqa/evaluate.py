@@ -186,9 +186,7 @@ def comparison_table(path: Path = config.METRICS_PATH) -> str:
         elif ft:
             lines.append(f"{key}: no `--base` control measured yet — improvement is unattributable")
 
-    lines.append(
-        "\nCompare bits/byte across models; perplexity only within one tokenizer."
-    )
+    lines.append("\nCompare bits/byte across models; perplexity only within one tokenizer.")
     return "\n".join(lines)
 
 

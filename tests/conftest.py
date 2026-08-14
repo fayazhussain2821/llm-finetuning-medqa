@@ -49,6 +49,25 @@ def tokenizer() -> StubTokenizer:
 
 
 @pytest.fixture
+def real_tokenizer():
+    """A genuine `PreTrainedTokenizerFast` built offline from a toy vocabulary.
+
+    The collator test must exercise HuggingFace's real padding and label-masking
+    code — a stub with a hand-written `pad()` would only test the stub. A
+    WordLevel tokenizer gives us the real class with no network call.
+    """
+    from tokenizers import Tokenizer, models, pre_tokenizers
+    from transformers import PreTrainedTokenizerFast
+
+    words = ["<pad>", "<unk>", "</s>", "what", "is", "anemia", "low", "iron", "the", "flu"]
+    backend = Tokenizer(models.WordLevel({w: i for i, w in enumerate(words)}, unk_token="<unk>"))
+    backend.pre_tokenizer = pre_tokenizers.Whitespace()
+    return PreTrainedTokenizerFast(
+        tokenizer_object=backend, pad_token="<pad>", eos_token="</s>", unk_token="<unk>"
+    )
+
+
+@pytest.fixture
 def raw_dataset() -> Dataset:
     """Shaped like MedQuAD, including an answer that would break naive splitting."""
     return Dataset.from_dict(

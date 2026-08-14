@@ -110,8 +110,7 @@ def probe_token_lengths(
         [
             len(
                 tokenizer(
-                    config.PROMPT_TEMPLATE.format(q=r[config.QUESTION_COL])
-                    + r[config.ANSWER_COL]
+                    config.PROMPT_TEMPLATE.format(q=r[config.QUESTION_COL]) + r[config.ANSWER_COL]
                 )["input_ids"]
             )
             for r in sample

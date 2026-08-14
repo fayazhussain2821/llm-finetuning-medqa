@@ -542,6 +542,25 @@ note at the top of this phase. Open the PR only once all of the above pass.
 
 > ⚠️ **Run `gh auth refresh -s workflow` first** (see Phase 0.2) or the push is rejected.
 
+> **Status: 4.1–4.3 done (2026-08-07).** 45 tests, `.pre-commit-config.yaml`, and
+> `.github/workflows/ci.yml`. Step 4.4 (required status checks) is still open — it
+> needs one green CI run to exist before the check can be marked required.
+>
+> Three things this phase turned up that the plan did not anticipate:
+>
+> 1. **CI needed its own lockfile.** `requirements.txt` was resolved on macOS and
+>    carries no platform markers, so installing it on ubuntu resolves `torch==2.13.0`
+>    to the CUDA build and drags the whole `nvidia-*` stack into a CPU-only job.
+>    `requirements-ci.txt` is the linux/cpu resolution (`torch==2.13.0+cpu`).
+>    That makes three lockfiles: mac (dev), colab (GPU), ci (linux CPU).
+> 2. **`ruff format` rewrites Python inside markdown fences.** It reformatted the
+>    `gpt2_ppl, tiny_ppl = 5.99, 2.80` line quoted in Step 3.5 — but that line is
+>    *evidence*, quoted verbatim from the notebook. `*.md` is now excluded from ruff.
+> 3. **The ruff version must be pinned in three places at once** — `requirements.txt`,
+>    `requirements-ci.txt`, and `.pre-commit-config.yaml`. If the hook and CI disagree
+>    on a ruff version they disagree on formatting, and commits ping-pong between them.
+>    All three are on 0.16.1.
+
 ### Step 4.1 — Tests worth writing
 
 Do not chase coverage. Test the things that break silently:
