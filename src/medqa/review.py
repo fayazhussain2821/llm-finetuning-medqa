@@ -66,7 +66,7 @@ def load_generations(directory: Path | None = None) -> dict[str, list[dict]]:
 
 
 def build_sheet(
-    generations: dict[str, list[dict]], n: int = 20, seed: int = config.SEED
+    generations: dict[str, list[dict]], n: int = 20, seed: int = config.REVIEW_SEED
 ) -> tuple[list[dict], dict]:
     """Sample n questions and shuffle each one's answers independently.
 
@@ -261,7 +261,7 @@ def main(argv: list[str] | None = None) -> None:
         "--rater",
         help="who produced the ratings, e.g. 'fayaz' or 'claude-opus-4'; recorded with them",
     )
-    parser.add_argument("--seed", type=int, default=config.SEED)
+    parser.add_argument("--seed", type=int, default=config.REVIEW_SEED)
     parser.add_argument("--dir", type=Path, default=config.OUTPUT_DIR / "review")
     args = parser.parse_args(argv)
 
