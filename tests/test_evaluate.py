@@ -120,6 +120,41 @@ def test_comparison_table_flags_a_missing_control(tmp_path):
     assert "unattributable" in evaluate.comparison_table(path)
 
 
+def test_markdown_table_marks_the_control_row(tmp_path):
+    """The README must show at a glance which row is the untrained control."""
+    path = tmp_path / "metrics.json"
+    path.write_text(
+        json.dumps(
+            {
+                "gpt2-lora": {
+                    "bits_per_byte": 1.0,
+                    "perplexity": 6.0,
+                    "n_examples": 1641,
+                    "model": "gpt2",
+                    "fine_tuned": True,
+                },
+                "gpt2-base": {
+                    "bits_per_byte": 2.0,
+                    "perplexity": 11.0,
+                    "n_examples": 1641,
+                    "model": "gpt2",
+                    "fine_tuned": False,
+                },
+            }
+        )
+    )
+    table = evaluate.markdown_table(path)
+
+    assert "control" in table
+    assert "| `gpt2-base` |" in table and "| `gpt2-lora` |" in table
+    assert "50.0%" in table
+    assert table.count("|") > 10  # it is actually a markdown table
+
+
+def test_markdown_table_without_metrics_file(tmp_path):
+    assert "No metrics recorded yet" in evaluate.markdown_table(tmp_path / "absent.json")
+
+
 def test_comparison_table_without_metrics_file(tmp_path):
     assert "no metrics yet" in evaluate.comparison_table(tmp_path / "absent.json")
 
