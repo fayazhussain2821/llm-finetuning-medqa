@@ -29,13 +29,20 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Notebooks are drivers, not library code: `import gc, torch` and `a(); b()` are
+# idiomatic in a cell and unhelpful to fight. `notebooks/original/` is a frozen
+# reference copy and must not be reformatted at all. nbstripout guards these.
+extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# network tests are opt-in: CI has no HF token, and a suite that downloads
+# model weights is a suite nobody runs. Enable with `-m network`.
+addopts = "-q -m 'not network'"
+markers = ["network: requires the HuggingFace Hub"]
 
 [build-system]
 requires = ["hatchling"]
