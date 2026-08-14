@@ -600,6 +600,32 @@ gh api -X PUT repos/fayazhussain2821/llm-finetuning-medqa/rulesets/RULESET_ID ..
 
 Add `required_status_checks` for the `ci` job. Now a red build genuinely blocks merge.
 
+> **Status: done (2026-08-14), and Step 2.5 with it.** The `protect-main` ruleset
+> (id 20874437) was never actually created in Phase 2, so `main` was unprotected the
+> whole time. It exists now, with `pull_request` (0 approvals), `deletion`,
+> `non_fast_forward`, and `required_status_checks` on the `ci` context.
+> `current_user_can_bypass: never`.
+>
+> **Why CI had never run once, despite being green locally since Phase 4.** GitHub
+> only registers a workflow after the file exists on the *default* branch. `ci.yml`
+> lived on `phase-4/ci` and its descendants, never on `main`, so every PR in the stack
+> reported "no checks" — including a brand-new PR whose own branch contained the
+> workflow, and a close/reopen to force a `pull_request` event. Zero runs, no error
+> message, nothing in the Actions tab to explain it. The first run in the repo's
+> history fired the moment PR #2 merged and put `ci.yml` on `main` (58s, green).
+>
+> Consequence for a stacked workflow: **the PR that introduces CI can never be gated
+> by it.** PRs #1 and #2 were verified by running CI's exact commands locally against
+> each branch instead; #3 and #4 got real checks. Worth knowing before designing
+> another stack that defers CI to a later phase.
+>
+> Note also that retargeting a PR fires an `edited` event, which is not a default
+> `pull_request` trigger — closing and reopening is what actually starts a run.
+>
+> The verify step below was carried out: PR #5, one deliberately failing test, CI red
+> in 44s, `gh pr merge` refused with "the base branch policy prohibits the merge".
+> Closed and branch deleted.
+
 **✅ Verify Phase 4** — open a throwaway PR that breaks a test on purpose; confirm
 merge is blocked. Then close it.
 
