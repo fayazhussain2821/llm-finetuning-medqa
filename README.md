@@ -152,6 +152,60 @@ GPT-2 matching the reference length more closely. And ROUGE-L rewards phrasing t
 matches MedQuAD's house style, which fine-tuning teaches directly; part of the
 within-model gain is register, not knowledge.
 
+### Reading the answers: the only measurement that sees factuality
+
+ROUGE-L cannot tell a true medical claim from a fluent false one. So 20 held-out
+questions were sampled, all four answers to each were **shuffled and stripped of
+their labels**, and every answer was rated 1–5 for factual soundness against the
+reference. `python -m medqa.review --sample 20` builds the sheet; the unblinding
+key is written to a separate file that `--report` reads afterwards.
+
+> ⚠️ **These ratings are an LLM-judge pass, not a human one.** They were produced by
+> the same assistant that wrote the harness, which is exactly the independence a
+> review like this is supposed to have. Treat them as a strong prior to be checked,
+> not as a result. `outputs/review/sheet.md` is ready for a human pass.
+
+| run | mean 1–5 ↑ | sd | contradicts reference (1–2) ↓ | n |
+|---|---|---|---|---|
+| `gpt2-base` | 1.45 | 0.67 | 90% | 20 |
+| `gpt2-lora` | 1.20 | 0.51 | 95% | 20 |
+| `tinyllama-base` | 2.30 | 1.10 | 50% | 20 |
+| `tinyllama-qlora` | 2.70 | 0.90 | 40% | 20 |
+
+Every arm answered the same 20 questions, so the comparisons are paired. The
+interval matters more than the mean at this sample size:
+
+| comparison | mean Δ | 95% CI | W/L/T | detected? |
+|---|---|---|---|---|
+| `gpt2-lora` − `gpt2-base` | −0.25 | [−0.65, +0.10] | 3/6/11 | **no** |
+| `tinyllama-qlora` − `tinyllama-base` | +0.40 | [−0.10, +0.90] | 10/4/6 | **no** |
+| `tinyllama-base` − `gpt2-lora` | +1.10 | [+0.55, +1.65] | 12/2/6 | yes |
+| `tinyllama-qlora` − `gpt2-lora` | +1.50 | [+1.10, +1.95] | 17/0/3 | yes |
+
+**Neither fine-tuning run produced a detectable improvement in factual soundness.**
+Both within-model intervals span zero. That is the sharpest disagreement in this
+project: bits per byte says fine-tuning helped by 25.8% and 35.4%, ROUGE-L says
++21.8% and +51.0%, and on whether the answers are *true*, twenty questions cannot
+detect any effect at all. GPT-2's point estimate is even slightly negative — LoRA
+taught it MedQuAD's register, and the register is what the automatic metrics score.
+
+**What is unambiguous is the thing the project was controlling for, not testing.**
+Untouched TinyLlama beats fully fine-tuned GPT-2 by +1.10 (12 wins, 2 losses), and
+fine-tuned TinyLlama beats it by +1.50, winning 17 of 20 and losing none. Model
+choice dominates adaptation method so completely that the adaptation method is not
+measurable underneath it.
+
+**The absolute numbers are the real story.** `gpt2-lora` contradicts the reference
+or invents an entity in **95%** of its answers. The best arm still does so in 40%.
+Typical failures: Marfan syndrome attributed to "an infection", congenital stromal
+corneal dystrophy attributed to `COL4A1` (it is `DCN`), Chagas disease transmitted
+by "ticks or fleas", a fabricated `FHNV` gene, and a citation to a Johns Hopkins
+doctor who does not appear to exist. All fluent. All confidently phrased. None of
+it is visible in any other number on this page.
+
+"Detected no difference" is not "there is no difference" — 20 questions is a small
+instrument, and the +0.40 for TinyLlama may well be real and simply unresolved here.
+
 ---
 
 ## Reproducing this
@@ -191,6 +245,14 @@ python -m medqa.quality --model tinyllama  --base
 python -m medqa.quality --table                       # print what was measured
 ```
 
+Factual soundness needs a person, so it is two commands with reading in between:
+
+```bash
+python -m medqa.review --sample 20    # blinded sheet → outputs/review/sheet.md
+# ... read it, fill in outputs/review/ratings.json ...
+python -m medqa.review --report       # unblind, aggregate, paired intervals
+```
+
 Every result is computed into `outputs/metrics.json`, and every generation into
 `outputs/generations/`. The tables above and below are rendered from that file by
 `python scripts/update_readme_results.py`. No figure in this README was typed by hand.
@@ -211,6 +273,7 @@ src/medqa/
   train.py      one CLI, both arms
   evaluate.py   likelihood scoring → metrics.json
   quality.py    generate, then ROUGE-L / token-F1 / degeneration → metrics.json
+  review.py     blinded human rating → paired intervals → metrics.json
 app/demo.py     Gradio side-by-side
 notebooks/
   colab_train.ipynb   thin driver — orchestration only
@@ -252,12 +315,17 @@ while there is still time to stop.
 
 - **One epoch, one seed, one run per arm.** No variance estimate, so small differences
   between arms should not be read as real.
-- **Nothing here evaluates factual accuracy.** Bits per byte measures likelihood;
-  ROUGE-L and token F1 measure word overlap with one reference answer. All three
-  reward matching the dataset's register and phrasing, and none of them can tell a
-  correct medical claim from a fluent false one. For medical content that is the gap
-  that matters most, and it is still open. `outputs/generations/` exists so the
-  answers can at least be read.
+- **No automatic metric here evaluates factual accuracy.** Bits per byte measures
+  likelihood; ROUGE-L and token F1 measure word overlap with one reference answer.
+  All three reward matching the dataset's register and phrasing, and none can tell a
+  correct medical claim from a fluent false one. Only the blinded review above looks
+  at truth, and it is 20 questions rated by an LLM, not a clinician.
+- **The factual ratings are not independent.** They were produced by the same
+  assistant that wrote the rating harness. A human pass over `outputs/review/sheet.md`
+  is what would make them a result rather than a prior.
+- **Every arm is factually unreliable.** The best of them contradicts the reference
+  or invents an entity in 40% of answers; the worst, in 95%. Nothing in this repo
+  produces a model that should be read for medical content.
 - **One reference answer per question.** A correct answer phrased differently, or a
   correct answer MedQuAD happens not to give, scores as a miss.
 - **MedQuAD is authoritative but narrow** — NIH-sourced, US-centric, and frozen at

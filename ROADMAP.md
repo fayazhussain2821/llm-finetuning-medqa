@@ -796,8 +796,45 @@ task metric:
 >    re-running the likelihood pass would have silently deleted an hour of
 >    generations. It merges now, and two tests hold that.
 >
-> Still open from the list above: LLM-as-judge and the hand-scored set. Neither
-> automatic metric here can tell a correct medical claim from a fluent false one.
+> **The hand-scored set (2026-08-14).** `src/medqa/review.py` builds a blinded sheet:
+> 20 held-out questions, all four answers shuffled per question and labelled A–D, the
+> unblinding key written to a separate file. Rated 1–5 for factual soundness against
+> the reference. `--report` unblinds, aggregates, and prints paired bootstrap
+> intervals, because every arm answered the same questions.
+>
+> **Ratings so far are an LLM-judge pass, not a human one** — produced by the same
+> assistant that wrote the harness, which is precisely the independence the exercise
+> needs. `outputs/review/sheet.md` is ready for a human pass; that is the open item.
+>
+> | comparison | mean Δ | 95% CI | W/L/T | detected? |
+> |---|---|---|---|---|
+> | `gpt2-lora` − `gpt2-base` | −0.25 | [−0.65, +0.10] | 3/6/11 | **no** |
+> | `tinyllama-qlora` − `tinyllama-base` | +0.40 | [−0.10, +0.90] | 10/4/6 | **no** |
+> | `tinyllama-base` − `gpt2-lora` | +1.10 | [+0.55, +1.65] | 12/2/6 | yes |
+> | `tinyllama-qlora` − `gpt2-lora` | +1.50 | [+1.10, +1.95] | 17/0/3 | yes |
+>
+> **Neither fine-tuning run shows a detectable effect on whether the answers are
+> true.** Both within-model intervals span zero, while bits per byte reports 25.8%
+> and 35.4% gains and ROUGE-L reports +21.8% and +51.0%. GPT-2's point estimate is
+> mildly negative: LoRA taught it MedQuAD's register, and register is what the
+> automatic metrics score. What *is* unambiguous is the comparison the project was
+> controlling for rather than testing — untouched TinyLlama beats fine-tuned GPT-2
+> by +1.10, and fine-tuned TinyLlama wins 17 of 20 against it, losing none.
+>
+> Absolute numbers matter more than the deltas: `gpt2-lora` contradicts the reference
+> or invents an entity in **95%** of answers, the best arm in **40%**. Observed
+> failures include Marfan syndrome attributed to "an infection", congenital stromal
+> corneal dystrophy attributed to `COL4A1` (it is `DCN`), Chagas transmitted by
+> "ticks or fleas", a fabricated `FHNV` gene, and a citation to a Johns Hopkins
+> doctor who does not appear to exist.
+>
+> Design notes worth keeping: the sheet shuffles **per question**, not once, or a
+> rater learns "C is the good one" and scores the label; and `--report` reports
+> `spans_zero` as the headline, because a bare mean over 20 questions invites reading
+> a gap that a rerun would not reproduce.
+>
+> Still open: an independent (human or third-party-model) pass, and a larger sample —
+> n=20 cannot resolve the +0.40 that may well be real.
 
 ### 6.4 — Report variance
 
