@@ -80,6 +80,10 @@ def score_dataset(model, tokenizer, dataset, spec: config.ModelSpec) -> dict[str
     total_tokens = 0
     total_bytes = 0
     skipped = 0
+    # per-example, kept so the corpus number can be given an interval later.
+    # Only sums were retained before, and a sum cannot be resampled.
+    per_example_nll: list[float] = []
+    per_example_bytes: list[int] = []
 
     for ex in dataset:
         prompt_text, full_text = _prompt_and_full_text(ex, spec, tokenizer)
@@ -103,11 +107,15 @@ def score_dataset(model, tokenizer, dataset, spec: config.ModelSpec) -> dict[str
             pred_logits.reshape(-1, pred_logits.size(-1)), target.reshape(-1), reduction="sum"
         )
 
-        total_nll += nll.item()
-        total_tokens += target.numel()
-        total_bytes += len(
+        example_nll = nll.item()
+        example_bytes = len(
             tokenizer.decode(full_ids[n_prompt:], skip_special_tokens=True).encode("utf-8")
         )
+        total_nll += example_nll
+        total_tokens += target.numel()
+        total_bytes += example_bytes
+        per_example_nll.append(example_nll)
+        per_example_bytes.append(example_bytes)
 
     if total_tokens == 0:
         raise RuntimeError("no answer tokens scored — check the prompt/answer split")
@@ -123,6 +131,9 @@ def score_dataset(model, tokenizer, dataset, spec: config.ModelSpec) -> dict[str
         "n_tokens": total_tokens,
         "n_bytes": total_bytes,
         "n_skipped": skipped,
+        # stripped out by `evaluate_model` and written beside metrics.json —
+        # 1641 pairs per arm would swamp the file people actually read
+        "per_example": {"nll": per_example_nll, "bytes": per_example_bytes},
     }
 
 
@@ -131,15 +142,27 @@ def evaluate_model(
     base: bool = False,
     adapter: str | Path | None = None,
     limit: int | None = None,
+    seed: int | None = None,
 ) -> tuple[str, dict]:
-    """Score one arm. `base=True` gives the untrained control condition."""
+    """Score one arm. `base=True` gives the untrained control condition.
+
+    `seed` selects a Phase 6.4 variance run: it resolves that run's adapter and
+    files the result under its own name, so bracketing the published number never
+    overwrites it.
+    """
     spec = config.get_spec(model_key)
     tokenizer = data.get_tokenizer(spec.base_id)
     eval_ds = data.held_out(limit)
 
+    if seed is not None and adapter is None and not base:
+        adapter = spec.seeded_output_dir(seed)
+
     run_name, model = models.load_arm(spec, base=base, adapter=adapter)
+    if seed is not None:
+        run_name = spec.seeded_run_name(seed, base=base)
 
     metrics = score_dataset(model, tokenizer, eval_ds, spec)
+    write_per_example(run_name, metrics.pop("per_example"))
     metrics.update(
         {
             "model": spec.key,
@@ -151,6 +174,20 @@ def evaluate_model(
         }
     )
     return run_name, metrics
+
+
+def write_per_example(run_name: str, per_example: dict, directory: Path | None = None) -> Path:
+    """Per-row NLL and byte counts, kept beside metrics.json.
+
+    A corpus bits-per-byte is one number with no interval attached. These rows are
+    what let `medqa.variance` resample it, and — because every arm is scored on the
+    same held-out rows in the same order — compare two arms *paired*.
+    """
+    directory = directory or config.PER_EXAMPLE_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{run_name}.json"
+    path.write_text(json.dumps(per_example))
+    return path
 
 
 def update_metrics(run_name: str, patch: dict, path: Path = config.METRICS_PATH) -> None:
@@ -245,13 +282,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--base", action="store_true", help="score the base model (control)")
     parser.add_argument("--adapter", help="local dir or Hub repo id; defaults to outputs/ then Hub")
     parser.add_argument("--limit", type=int, help="score only N eval rows (smoke test)")
+    parser.add_argument(
+        "--seed", type=int, help="score a Phase 6.4 variance run trained with this seed"
+    )
     parser.add_argument("--table", action="store_true", help="print metrics.json and exit")
     parser.add_argument("--markdown", action="store_true", help="render the table for the README")
     args = parser.parse_args(argv)
 
     if args.model:
         run_name, metrics = evaluate_model(
-            args.model, base=args.base, adapter=args.adapter, limit=args.limit
+            args.model, base=args.base, adapter=args.adapter, limit=args.limit, seed=args.seed
         )
         write_metrics(run_name, metrics)
     elif not (args.table or args.markdown):

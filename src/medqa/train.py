@@ -2,10 +2,16 @@
 
     python -m medqa.train --model gpt2
     python -m medqa.train --model tinyllama
+    python -m medqa.train --model gpt2 --seed 43     # a variance run (Phase 6.4)
 
 What the notebooks lacked and this adds:
 
-* `set_seed(42)` across torch, numpy and random — not just the dataset split.
+* `set_seed(...)` across torch, numpy and random — not just the dataset split.
+* **`--seed` moves the training run and nothing else.** The train/eval split is
+  pinned to `config.SPLIT_SEED` and never varies, so repeated runs are scored on
+  identical held-out rows. These were one constant; had they stayed one, every
+  variance run would have re-split the data and the spread would have silently
+  included the split.
 * Evaluation *during* training (`eval_strategy="steps"`), so an overfit is visible
   while there is still time to stop. The notebooks only evaluated at the end.
 * `load_best_model_at_end=True`.
@@ -48,7 +54,7 @@ def _precision_flags(spec: config.ModelSpec) -> dict[str, bool]:
 
 
 def build_training_args(
-    spec: config.ModelSpec, epochs: float, output_dir: Path
+    spec: config.ModelSpec, epochs: float, output_dir: Path, seed: int = config.TRAIN_SEED
 ) -> TrainingArguments:
     return TrainingArguments(
         output_dir=str(output_dir),
@@ -73,7 +79,7 @@ def build_training_args(
         gradient_checkpointing=spec.gradient_checkpointing,
         optim=spec.optim,
         report_to="none",
-        seed=config.SEED,
+        seed=seed,
         **_precision_flags(spec),
     )
 
@@ -86,16 +92,27 @@ def save_run_config(
     payload = {
         "spec": {**asdict(spec), "effective_batch_size": spec.effective_batch_size},
         "lora": {"r": config.LORA_R, "alpha": config.LORA_ALPHA, "dropout": config.LORA_DROPOUT},
-        "data": {"dataset": config.DATASET_ID, "max_len": config.MAX_LEN, "seed": config.SEED},
+        "data": {
+            "dataset": config.DATASET_ID,
+            "max_len": config.MAX_LEN,
+            # both, always: which rows were held out, and which run this was
+            "split_seed": config.SPLIT_SEED,
+            "train_seed": args.seed,
+        },
         "training_args": args.to_dict(),
         "metrics": metrics,
     }
     (dest / "run_config.json").write_text(json.dumps(payload, indent=2, default=str))
 
 
-def train(model_key: str, epochs: float = 1.0, push_to_hub: bool = False) -> dict:
+def train(
+    model_key: str,
+    epochs: float = 1.0,
+    push_to_hub: bool = False,
+    seed: int = config.TRAIN_SEED,
+) -> dict:
     spec = config.get_spec(model_key)
-    set_seed(config.SEED)  # torch + numpy + random, not just the split
+    set_seed(seed)  # torch + numpy + random — the training run, never the split
 
     tokenizer = data.get_tokenizer(spec.base_id)
     train_tok, eval_tok = data.build_splits(spec, tokenizer)
@@ -104,8 +121,8 @@ def train(model_key: str, epochs: float = 1.0, push_to_hub: bool = False) -> dic
     model = models.load_for_training(spec, tokenizer)
     model.print_trainable_parameters()
 
-    output_dir = spec.output_dir
-    args = build_training_args(spec, epochs, output_dir)
+    output_dir = spec.seeded_output_dir(seed)
+    args = build_training_args(spec, epochs, output_dir, seed=seed)
     trainer = Trainer(
         model=model,
         args=args,
@@ -118,7 +135,7 @@ def train(model_key: str, epochs: float = 1.0, push_to_hub: bool = False) -> dic
 
     eval_metrics = trainer.evaluate()
     eval_loss = eval_metrics["eval_loss"]
-    metrics = {"eval_loss": eval_loss, "perplexity": math.exp(eval_loss)}
+    metrics = {"eval_loss": eval_loss, "perplexity": math.exp(eval_loss), "train_seed": seed}
     print(f"[{spec.key}] eval loss {eval_loss:.4f}  |  perplexity {metrics['perplexity']:.2f}")
 
     trainer.save_model(str(output_dir))
@@ -127,6 +144,14 @@ def train(model_key: str, epochs: float = 1.0, push_to_hub: bool = False) -> dic
     print(f"[{spec.key}] adapter saved to {output_dir}")
 
     if push_to_hub:
+        # A variance run is not the published artefact. Pushing seed 43 to
+        # `gpt2-medqa-lora` would replace the adapter every result on the Hub
+        # refers to, with no trace that it happened.
+        if seed != config.TRAIN_SEED:
+            raise ValueError(
+                f"refusing to push a seed-{seed} run to {spec.hub_repo}: that repo holds the "
+                f"seed-{config.TRAIN_SEED} adapter the published results were measured on"
+            )
         trainer.model.push_to_hub(spec.hub_repo)
         tokenizer.push_to_hub(spec.hub_repo)
         print(f"[{spec.key}] pushed to {spec.hub_repo}")
@@ -139,12 +164,18 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--model", required=True, choices=sorted(config.MODEL_SPECS))
     parser.add_argument("--epochs", type=float, default=1.0)
     parser.add_argument(
+        "--seed",
+        type=int,
+        default=config.TRAIN_SEED,
+        help="training seed only; the train/eval split never moves (Phase 6.4)",
+    )
+    parser.add_argument(
         "--push-to-hub",
         action="store_true",
         help=f"upload the adapter to {config.HF_USER}/… (needs a write token)",
     )
     args = parser.parse_args(argv)
-    train(args.model, epochs=args.epochs, push_to_hub=args.push_to_hub)
+    train(args.model, epochs=args.epochs, push_to_hub=args.push_to_hub, seed=args.seed)
 
 
 if __name__ == "__main__":

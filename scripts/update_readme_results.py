@@ -18,10 +18,11 @@ import json
 import sys
 from datetime import date
 
-from medqa import config, evaluate, quality
+from medqa import config, evaluate, quality, variance
 
 RESULTS_BEGIN, RESULTS_END = "<!-- RESULTS:BEGIN -->", "<!-- RESULTS:END -->"
 QUALITY_BEGIN, QUALITY_END = "<!-- QUALITY:BEGIN -->", "<!-- QUALITY:END -->"
+VARIANCE_BEGIN, VARIANCE_END = "<!-- VARIANCE:BEGIN -->", "<!-- VARIANCE:END -->"
 
 PREAMBLE = """## Results
 
@@ -38,6 +39,16 @@ Regenerate this block with `python scripts/update_readme_results.py`.
 QUALITY_PREAMBLE = """Greedy decoding, ≤{max_new} new tokens, the first {n} held-out rows —
 the same questions for every arm. Likelihood says how plausible the reference was;
 these say what the model actually wrote when asked.
+"""
+
+VARIANCE_PREAMBLE = """Bootstrap over the held-out rows, 10,000 resamples. Comparisons are
+**paired** — one resample of row indices applied to both arms, since every arm was
+scored on the same questions.
+"""
+
+VARIANCE_FOOTER = """
+Produced by `python -m medqa.variance`. These intervals cover the eval sample only;
+run-to-run spread across training seeds is a separate experiment.
 """
 
 QUALITY_FOOTER = """
@@ -105,6 +116,13 @@ def main() -> int:
         )
     else:
         print("no answer-quality runs in metrics.json — leaving that block alone")
+
+    if variance.available_runs():
+        blocks[(VARIANCE_BEGIN, VARIANCE_END)] = "\n".join(
+            ["", VARIANCE_PREAMBLE, variance.markdown_table(), VARIANCE_FOOTER, ""]
+        )
+    else:
+        print("no per-example scores — leaving the variance block alone")
 
     readme = config.ROOT / "README.md"
     text = readme.read_text()

@@ -22,6 +22,7 @@ else:
 OUTPUT_DIR = ROOT / "outputs"
 METRICS_PATH = OUTPUT_DIR / "metrics.json"
 GENERATIONS_DIR = OUTPUT_DIR / "generations"
+PER_EXAMPLE_DIR = OUTPUT_DIR / "per_example"
 
 # Generation is ~1000x slower per row than a scoring forward pass, so answer
 # quality is measured on a prefix of the held-out set rather than all of it.
@@ -38,7 +39,24 @@ DATASET_ID = "keivalya/MedQuad-MedicalQnADataset"
 QUESTION_COL = "Question"
 ANSWER_COL = "Answer"
 
-SEED = 42
+# ── seeds: three different jobs, deliberately three different names ────
+# These were one constant, `SEED`, used for all of them. Phase 6.4 varies the
+# training seed to estimate run-to-run spread — and threading that single
+# constant through would have re-split the data on every run, giving each seed a
+# different held-out set. The "variance" measured would then have included the
+# split, and nothing in the output would have said so.
+
+#: The held-out set is a constant of the experiment, not a knob. Never vary it:
+#: every arm and every seed must be scored on identical rows.
+SPLIT_SEED = 42
+
+#: Training randomness — data order, LoRA init, dropout. This is what 6.4 varies.
+TRAIN_SEED = 42
+TRAIN_SEEDS = (42, 43, 44)
+
+#: Which questions land on the blinded review sheet.
+REVIEW_SEED = 42
+
 TEST_SIZE = 0.1
 
 # Chosen by measuring, not guessing: the 95th percentile of prompt+answer token
@@ -93,6 +111,26 @@ class ModelSpec:
     @property
     def output_dir(self) -> Path:
         return OUTPUT_DIR / self.adapter_name
+
+    def seeded_output_dir(self, seed: int) -> Path:
+        """Where one training run's adapter lives; the default seed keeps the plain name.
+
+        Phase 6.4 trains the same arm several times. Without a per-seed directory
+        the second run overwrites the first and the "spread" is one number.
+        """
+        if seed == TRAIN_SEED:
+            return self.output_dir
+        return OUTPUT_DIR / f"{self.adapter_name}-seed{seed}"
+
+    def seeded_run_name(self, seed: int, base: bool = False) -> str:
+        """The key this run is filed under in metrics.json.
+
+        Distinct per seed for the same reason: a variance run recorded as plain
+        `gpt2-lora` would overwrite the published result it is meant to bracket.
+        """
+        method = "qlora" if self.load_in_4bit else "lora"
+        arm = f"{self.key}-base" if base else f"{self.key}-{method}"
+        return arm if seed == TRAIN_SEED else f"{arm}-seed{seed}"
 
 
 GPT2 = ModelSpec(

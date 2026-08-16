@@ -59,7 +59,7 @@ a model, never across the two.
 - **gpt2**: fine-tuning cut bits/byte by **25.8%** vs its own base model.
 - **tinyllama**: fine-tuning cut bits/byte by **35.4%** vs its own base model.
 
-Measured 2026-08-07 by `python -m medqa.evaluate`, read from `outputs/metrics.json`.
+Measured 2026-08-15 by `python -m medqa.evaluate`, read from `outputs/metrics.json`.
 Regenerate this block with `python scripts/update_readme_results.py`.
 
 <!-- RESULTS:END -->
@@ -77,10 +77,11 @@ a **33.8%** reduction. Real, but two-thirds the advertised size; the rest was an
 artifact of counting tokens in different units.
 
 **Most of the cross-model gap was never about QLoRA.** Untouched TinyLlama scores
-0.6120 — within a few percent of *fully fine-tuned* GPT-2 at 0.5970. A model that
-never saw one row of MedQuAD essentially matches the baseline arm's finished result,
-because it is ~9× larger and was instruction-tuned before this project began.
-Attributing that gap to the adaptation method was the error the missing control hid.
+0.6120, against 0.5970 for *fully fine-tuned* GPT-2 — a 2.5% gap (interval below). A
+model that never saw one row of MedQuAD comes within a few percent of the baseline
+arm's finished result, because it is ~9× larger and was instruction-tuned before this
+project began. Attributing that gap to the adaptation method was the error the missing
+control hid.
 
 **But QLoRA did do more work, and now that is separable.** Fine-tuning moved TinyLlama
 35.4% and GPT-2 25.8%, each against its own starting point. That comparison is
@@ -206,6 +207,64 @@ it is visible in any other number on this page.
 "Detected no difference" is not "there is no difference" — 20 questions is a small
 instrument, and the +0.40 for TinyLlama may well be real and simply unresolved here.
 
+### How much of this is noise?
+
+Every number above is a point estimate. A gap is not a result until you know whether a
+rerun would reproduce it, and there are two independent reasons it might not:
+
+1. **Which questions were held out.** The 1,641 eval rows are a sample; a different
+   draw would move the numbers. Measured below by resampling.
+2. **Which training run happened.** Data order, LoRA initialisation, dropout. Only
+   retraining measures this — see the caveat after the table.
+
+<!-- VARIANCE:BEGIN -->
+Bootstrap over the held-out rows, 10,000 resamples. Comparisons are
+**paired** — one resample of row indices applied to both arms, since every arm was
+scored on the same questions.
+
+| run | bits/byte | 95% CI (eval sample) | n |
+|---|---|---|---|
+| `gpt2-base` | 0.8049 | [0.7977, 0.8121] | 1641 |
+| `gpt2-lora` | 0.5970 | [0.5850, 0.6088] | 1641 |
+| `tinyllama-base` | 0.6120 | [0.6059, 0.6185] | 1641 |
+| `tinyllama-qlora` | 0.3954 | [0.3860, 0.4046] | 1641 |
+
+| comparison | reduction | 95% CI | survives resampling? |
+|---|---|---|---|
+| `gpt2-base` → `gpt2-lora` | 25.8% | [24.3%, 27.5%] | yes |
+| `tinyllama-base` → `tinyllama-qlora` | 35.4% | [33.8%, 37.1%] | yes |
+| `gpt2-lora` → `tinyllama-qlora` | 33.8% | [33.1%, 34.5%] | yes |
+| `gpt2-lora` → `tinyllama-base` | -2.5% | [-5.0%, -0.2%] | yes |
+
+Produced by `python -m medqa.variance`. These intervals cover the eval sample only;
+run-to-run spread across training seeds is a separate experiment.
+
+<!-- VARIANCE:END -->
+
+**Every headline gap survives resampling the questions.** 25.8% and 35.4% within each
+model, and 33.8% between the fine-tuned arms, all with intervals comfortably clear of
+zero. On this axis the results are solid.
+
+**One case shows why the pairing matters.** The marginal intervals for `gpt2-lora`
+([0.5850, 0.6088]) and `tinyllama-base` ([0.6059, 0.6185]) *overlap*, which by the
+usual eyeball test would mean "no detectable difference". Paired, the difference is
+detectable: fine-tuned GPT-2 really is ahead of untouched TinyLlama on likelihood, by
+2.5% [0.2%, 5.0%]. Overlapping error bars are not a test, and comparing arms
+independently when they answered identical questions throws away the pairing that
+makes the comparison sharp.
+
+**And that sharpens the contradiction.** On likelihood, `gpt2-lora` beats
+`tinyllama-base` by a small but *statistically detectable* margin. On generated
+answers, `tinyllama-base` beats `gpt2-lora` by 59% on ROUGE-L. On factual soundness it
+wins by +1.10 [+0.55, +1.65]. The metrics do not merely disagree about size — they
+reverse the ranking, and the reversal is detectable in both directions.
+
+> **Seed variance is still unmeasured.** These intervals cover the eval sample only. A
+> gap can clear them comfortably and still vanish under a different training seed.
+> `python -m medqa.train --model gpt2 --seed 43` measures that, needs a CUDA GPU, and
+> has not been run — so "one epoch, one seed, one run per arm" remains a live
+> limitation, now narrowed to exactly one source of uncertainty instead of two.
+
 ---
 
 ## Reproducing this
@@ -245,6 +304,17 @@ python -m medqa.quality --model tinyllama  --base
 python -m medqa.quality --table                       # print what was measured
 ```
 
+How much of any gap is noise, in two parts:
+
+```bash
+python -m medqa.variance                     # intervals over the held-out sample
+python -m medqa.train --model gpt2 --seed 43 # a variance run — needs a CUDA GPU
+python -m medqa.evaluate --model gpt2 --seed 43
+```
+
+`--seed` moves the training run and nothing else; the split is pinned to
+`config.SPLIT_SEED` so every run is scored on identical rows.
+
 Factual soundness needs a person, so it is two commands with reading in between:
 
 ```bash
@@ -274,6 +344,7 @@ src/medqa/
   evaluate.py   likelihood scoring → metrics.json
   quality.py    generate, then ROUGE-L / token-F1 / degeneration → metrics.json
   review.py     blinded human rating → paired intervals → metrics.json
+  variance.py   bootstrap intervals on the eval sample; spread across train seeds
 app/demo.py     Gradio side-by-side
 notebooks/
   colab_train.ipynb   thin driver — orchestration only

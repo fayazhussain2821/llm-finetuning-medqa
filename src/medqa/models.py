@@ -167,13 +167,16 @@ def load_arm(
     that loads the weights means a metric can never be filed against the wrong
     arm — the two facts come from one place.
     """
+    # one definition of an arm's name, on the spec — `evaluate` derives seeded
+    # names from the same method, so a run cannot land under two different keys
+    run_name = spec.seeded_run_name(config.TRAIN_SEED, base=base)
     if base:
-        return f"{spec.key}-base", load_base_model(spec, device)
+        return run_name, load_base_model(spec, device)
 
     adapter = str(adapter) if adapter is not None else resolve_adapter(spec)
     model = PeftModel.from_pretrained(load_base_model(spec, device), adapter)
     model.eval()
-    return f"{spec.key}-{'qlora' if spec.load_in_4bit else 'lora'}", model
+    return run_name, model
 
 
 # ── inference ──────────────────────────────────────────────────────────

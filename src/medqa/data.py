@@ -41,7 +41,7 @@ def format_examples(raw: Dataset) -> Dataset:
     return raw.map(_format, remove_columns=raw.column_names)
 
 
-def split_dataset(dataset: Dataset, seed: int = config.SEED) -> DatasetDict:
+def split_dataset(dataset: Dataset, seed: int = config.SPLIT_SEED) -> DatasetDict:
     """Seeded split — the eval set must be identical across every run and model."""
     return dataset.train_test_split(test_size=config.TEST_SIZE, seed=seed)
 

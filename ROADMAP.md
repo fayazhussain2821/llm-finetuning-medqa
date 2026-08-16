@@ -842,6 +842,48 @@ Single-seed results are anecdotes. Run three seeds, report mean ± std. If the g
 between two configurations is smaller than the seed-to-seed spread, you have not
 measured a difference at all.
 
+> **Status: half done (2026-08-15). The half that needs no GPU is finished; the seed
+> sweep is blocked on hardware, not on code.**
+>
+> The step as written conflates two independent noise sources. They need different
+> experiments and `src/medqa/variance.py` now reports them separately:
+>
+> 1. **Which questions were held out** — the 1,641 eval rows are a sample. Measured by
+>    bootstrapping the rows already scored. Done, locally, no GPU.
+> 2. **Which training run happened** — data order, LoRA init, dropout. Only retraining
+>    measures this. Blocked below.
+>
+> **Result for (1): every headline gap survives resampling.** 25.8% [24.3%, 27.5%],
+> 35.4% [33.8%, 37.1%], and 33.8% [33.1%, 34.5%] between the fine-tuned arms.
+>
+> **The case that justified doing it properly.** The marginal intervals for `gpt2-lora`
+> [0.5850, 0.6088] and `tinyllama-base` [0.6059, 0.6185] *overlap* — by eyeball, "no
+> difference". Paired, the difference is detectable: −2.5% [−5.0%, −0.2%]. Overlapping
+> error bars are not a test. Comparisons here resample one set of row indices and apply
+> it to both arms, because every arm answered identical questions.
+>
+> **Blocked: (2) needs a CUDA GPU.** Measured, not assumed — one optimiser step on this
+> Mac's MPS took **108 seconds** and then OOM'd at 19.8 GiB, so one epoch is ~27 hours
+> per seed, and QLoRA's 4-bit kernels do not run on MPS at all. `notebooks/colab_train.ipynb`
+> has the sweep ready (`config.TRAIN_SEEDS = (42, 43, 44)`); budget ~4 extra training
+> runs on a T4.
+>
+> **A correctness bug found on the way in.** `config.SEED` drove the train/eval split,
+> the training run *and* review sampling. Threading `--seed` through it would have
+> re-split the data on every variance run, so each seed would have scored a different
+> held-out set and the measured "run-to-run spread" would silently have included split
+> variance. Now three constants with one job each: `SPLIT_SEED` (never varies),
+> `TRAIN_SEED`/`TRAIN_SEEDS`, `REVIEW_SEED`.
+>
+> Two related guards: seeded runs get their own adapter dirs and their own metrics keys
+> (otherwise run two overwrites run one and the "spread" is a single number), and
+> `--push-to-hub` refuses a non-default seed — pushing seed 43 to `gpt2-medqa-lora`
+> would replace the adapter every published number refers to.
+>
+> Also: `score_dataset` only kept sums, and a sum cannot be resampled. It now records
+> per-example NLL and bytes to `outputs/per_example/`, which is what made any of this
+> possible.
+
 ### 6.5 — Safety disclaimer (non-negotiable)
 
 This model answers **medical** questions, and your Gradio demo is publicly
