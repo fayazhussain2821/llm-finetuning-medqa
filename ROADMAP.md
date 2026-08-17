@@ -802,27 +802,29 @@ task metric:
 > the reference. `--report` unblinds, aggregates, and prints paired bootstrap
 > intervals, because every arm answered the same questions.
 >
-> **Ratings so far are an LLM-judge pass, not a human one** — produced by the same
-> assistant that wrote the harness, which is precisely the independence the exercise
-> needs. `outputs/review/sheet.md` is ready for a human pass; that is the open item.
+> **The human pass is done (2026-08-17).** All 80 cells rated by the author, blind to
+> arm. The earlier LLM-judge pass is kept at `outputs/review/ratings.claude.json`; the
+> two raters disagreed on 36 of 80 individual scores, the LLM being consistently
+> harsher, but **every verdict below is identical under both**.
 >
 > | comparison | mean Δ | 95% CI | W/L/T | detected? |
 > |---|---|---|---|---|
-> | `gpt2-lora` − `gpt2-base` | −0.25 | [−0.65, +0.10] | 3/6/11 | **no** |
-> | `tinyllama-qlora` − `tinyllama-base` | +0.40 | [−0.10, +0.90] | 10/4/6 | **no** |
-> | `tinyllama-base` − `gpt2-lora` | +1.10 | [+0.55, +1.65] | 12/2/6 | yes |
-> | `tinyllama-qlora` − `gpt2-lora` | +1.50 | [+1.10, +1.95] | 17/0/3 | yes |
+> | `gpt2-lora` − `gpt2-base` | +0.20 | [−0.40, +0.80] | 6/4/10 | **no** |
+> | `tinyllama-qlora` − `tinyllama-base` | +0.35 | [−0.20, +0.90] | 7/3/10 | **no** |
+> | `tinyllama-base` − `gpt2-lora` | +1.10 | [+0.35, +1.85] | 13/4/3 | yes |
+> | `tinyllama-qlora` − `gpt2-lora` | +1.45 | [+0.80, +2.10] | 17/2/1 | yes |
 >
 > **Neither fine-tuning run shows a detectable effect on whether the answers are
 > true.** Both within-model intervals span zero, while bits per byte reports 25.8%
-> and 35.4% gains and ROUGE-L reports +21.8% and +51.0%. GPT-2's point estimate is
-> mildly negative: LoRA taught it MedQuAD's register, and register is what the
-> automatic metrics score. What *is* unambiguous is the comparison the project was
+> and 35.4% gains and ROUGE-L reports +21.8% and +51.0%. Both point estimates are
+> positive but small: LoRA taught these models MedQuAD's register, and register is what
+> the automatic metrics score. What *is* unambiguous is the comparison the project was
 > controlling for rather than testing — untouched TinyLlama beats fine-tuned GPT-2
-> by +1.10, and fine-tuned TinyLlama wins 17 of 20 against it, losing none.
+> by +1.10, and fine-tuned TinyLlama wins 17 of 20 against it, losing 2.
 >
-> Absolute numbers matter more than the deltas: `gpt2-lora` contradicts the reference
-> or invents an entity in **95%** of answers, the best arm in **40%**. Observed
+> Absolute numbers matter more than the deltas: `gpt2-base` contradicts the reference
+> or invents an entity in **70%** of answers, `gpt2-lora` in **60%**, the best arm in
+> **35%**. Observed
 > failures include Marfan syndrome attributed to "an infection", congenital stromal
 > corneal dystrophy attributed to `COL4A1` (it is `DCN`), Chagas transmitted by
 > "ticks or fleas", a fabricated `FHNV` gene, and a citation to a Johns Hopkins
@@ -833,8 +835,8 @@ task metric:
 > `spans_zero` as the headline, because a bare mean over 20 questions invites reading
 > a gap that a rerun would not reproduce.
 >
-> Still open: an independent (human or third-party-model) pass, and a larger sample —
-> n=20 cannot resolve the +0.40 that may well be real.
+> Still open: a second independent rater (the human pass is one non-expert, unadjudicated),
+> and a larger sample — n=20 cannot resolve the +0.35 that may well be real.
 
 ### 6.4 — Report variance
 

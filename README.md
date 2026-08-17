@@ -161,43 +161,44 @@ their labels**, and every answer was rated 1–5 for factual soundness against t
 reference. `python -m medqa.review --sample 20` builds the sheet; the unblinding
 key is written to a separate file that `--report` reads afterwards.
 
-> ⚠️ **These ratings are an LLM-judge pass, not a human one.** They were produced by
-> the same assistant that wrote the harness, which is exactly the independence a
-> review like this is supposed to have. Treat them as a strong prior to be checked,
-> not as a result. `outputs/review/sheet.md` is ready for a human pass.
+> **These ratings are a human pass.** All 80 answers were rated by the author against
+> the reference, blind to which arm produced them. An earlier LLM-judge pass over the
+> same sheet is kept at `outputs/review/ratings.claude.json` for comparison; the two
+> are contrasted below. Neither rater is a clinician.
 
 | run | mean 1–5 ↑ | sd | contradicts reference (1–2) ↓ | n |
 |---|---|---|---|---|
-| `gpt2-base` | 1.45 | 0.67 | 90% | 20 |
-| `gpt2-lora` | 1.20 | 0.51 | 95% | 20 |
-| `tinyllama-base` | 2.30 | 1.10 | 50% | 20 |
-| `tinyllama-qlora` | 2.70 | 0.90 | 40% | 20 |
+| `gpt2-base` | 1.60 | 0.92 | 70% | 20 |
+| `gpt2-lora` | 1.80 | 0.98 | 60% | 20 |
+| `tinyllama-base` | 2.90 | 1.37 | 50% | 20 |
+| `tinyllama-qlora` | 3.25 | 1.18 | 35% | 20 |
 
 Every arm answered the same 20 questions, so the comparisons are paired. The
 interval matters more than the mean at this sample size:
 
 | comparison | mean Δ | 95% CI | W/L/T | detected? |
 |---|---|---|---|---|
-| `gpt2-lora` − `gpt2-base` | −0.25 | [−0.65, +0.10] | 3/6/11 | **no** |
-| `tinyllama-qlora` − `tinyllama-base` | +0.40 | [−0.10, +0.90] | 10/4/6 | **no** |
-| `tinyllama-base` − `gpt2-lora` | +1.10 | [+0.55, +1.65] | 12/2/6 | yes |
-| `tinyllama-qlora` − `gpt2-lora` | +1.50 | [+1.10, +1.95] | 17/0/3 | yes |
+| `gpt2-lora` − `gpt2-base` | +0.20 | [−0.40, +0.80] | 6/4/10 | **no** |
+| `tinyllama-qlora` − `tinyllama-base` | +0.35 | [−0.20, +0.90] | 7/3/10 | **no** |
+| `tinyllama-base` − `gpt2-lora` | +1.10 | [+0.35, +1.85] | 13/4/3 | yes |
+| `tinyllama-qlora` − `gpt2-lora` | +1.45 | [+0.80, +2.10] | 17/2/1 | yes |
 
 **Neither fine-tuning run produced a detectable improvement in factual soundness.**
 Both within-model intervals span zero. That is the sharpest disagreement in this
 project: bits per byte says fine-tuning helped by 25.8% and 35.4%, ROUGE-L says
 +21.8% and +51.0%, and on whether the answers are *true*, twenty questions cannot
-detect any effect at all. GPT-2's point estimate is even slightly negative — LoRA
-taught it MedQuAD's register, and the register is what the automatic metrics score.
+detect any effect at all. Both point estimates are positive but small — LoRA taught
+these models MedQuAD's register, and the register is what the automatic metrics score.
 
 **What is unambiguous is the thing the project was controlling for, not testing.**
-Untouched TinyLlama beats fully fine-tuned GPT-2 by +1.10 (12 wins, 2 losses), and
-fine-tuned TinyLlama beats it by +1.50, winning 17 of 20 and losing none. Model
+Untouched TinyLlama beats fully fine-tuned GPT-2 by +1.10 (13 wins, 4 losses), and
+fine-tuned TinyLlama beats it by +1.45, winning 17 of 20 and losing 2. Model
 choice dominates adaptation method so completely that the adaptation method is not
 measurable underneath it.
 
-**The absolute numbers are the real story.** `gpt2-lora` contradicts the reference
-or invents an entity in **95%** of its answers. The best arm still does so in 40%.
+**The absolute numbers are the real story.** `gpt2-base` contradicts the reference
+or invents an entity in **70%** of its answers, `gpt2-lora` in 60%. The best arm
+still does so in 35%.
 Typical failures: Marfan syndrome attributed to "an infection", congenital stromal
 corneal dystrophy attributed to `COL4A1` (it is `DCN`), Chagas disease transmitted
 by "ticks or fleas", a fabricated `FHNV` gene, and a citation to a Johns Hopkins
@@ -205,7 +206,19 @@ doctor who does not appear to exist. All fluent. All confidently phrased. None o
 it is visible in any other number on this page.
 
 "Detected no difference" is not "there is no difference" — 20 questions is a small
-instrument, and the +0.40 for TinyLlama may well be real and simply unresolved here.
+instrument, and the +0.35 for TinyLlama may well be real and simply unresolved here.
+
+**What the LLM judge got right and wrong.** The same 80 answers were rated first by
+an LLM and then by a human, blind, on the same sheet. The two raters disagreed on
+**36 of 80 individual scores**, and the LLM was consistently harsher — it put
+`gpt2-lora` at 1.20 mean / 95% contradiction where the human pass says 1.80 / 60%,
+and it alone ranked `gpt2-lora` *below* its own base model. Yet all four verdicts in
+the table above are identical under both raters: neither fine-tuning effect is
+detectable, and both cross-model gaps are. The one ranking they disagree on is the
+one neither can resolve — `gpt2-lora` against `gpt2-base`, where the interval spans
+zero either way. The judge was a reliable guide to *which comparisons resolve* and an
+unreliable guide to *how bad the answers are* — worth knowing before quoting an
+LLM-judged absolute rate as a finding.
 
 ### How much of this is noise?
 
@@ -390,12 +403,12 @@ while there is still time to stop.
   likelihood; ROUGE-L and token F1 measure word overlap with one reference answer.
   All three reward matching the dataset's register and phrasing, and none can tell a
   correct medical claim from a fluent false one. Only the blinded review above looks
-  at truth, and it is 20 questions rated by an LLM, not a clinician.
-- **The factual ratings are not independent.** They were produced by the same
-  assistant that wrote the rating harness. A human pass over `outputs/review/sheet.md`
-  is what would make them a result rather than a prior.
+  at truth, and it is 20 questions rated by the author, not a clinician.
+- **The factual ratings are one non-expert rater.** Blind to arm, but a single pass
+  by the repo's author against MedQuAD's reference text — not adjudicated by a second
+  rater, and not a clinical judgement. Inter-rater spread is unmeasured.
 - **Every arm is factually unreliable.** The best of them contradicts the reference
-  or invents an entity in 40% of answers; the worst, in 95%. Nothing in this repo
+  or invents an entity in 35% of answers; the worst, in 70%. Nothing in this repo
   produces a model that should be read for medical content.
 - **One reference answer per question.** A correct answer phrased differently, or a
   correct answer MedQuAD happens not to give, scores as a miss.
