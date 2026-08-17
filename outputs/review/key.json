@@ -1,0 +1,122 @@
+{
+  "q01": {
+    "A": "gpt2-lora",
+    "B": "tinyllama-qlora",
+    "C": "tinyllama-base",
+    "D": "gpt2-base"
+  },
+  "q02": {
+    "A": "tinyllama-base",
+    "B": "gpt2-lora",
+    "C": "gpt2-base",
+    "D": "tinyllama-qlora"
+  },
+  "q03": {
+    "A": "gpt2-lora",
+    "B": "tinyllama-qlora",
+    "C": "gpt2-base",
+    "D": "tinyllama-base"
+  },
+  "q04": {
+    "A": "gpt2-base",
+    "B": "tinyllama-base",
+    "C": "gpt2-lora",
+    "D": "tinyllama-qlora"
+  },
+  "q05": {
+    "A": "tinyllama-base",
+    "B": "tinyllama-qlora",
+    "C": "gpt2-base",
+    "D": "gpt2-lora"
+  },
+  "q06": {
+    "A": "tinyllama-base",
+    "B": "gpt2-lora",
+    "C": "tinyllama-qlora",
+    "D": "gpt2-base"
+  },
+  "q07": {
+    "A": "tinyllama-qlora",
+    "B": "tinyllama-base",
+    "C": "gpt2-lora",
+    "D": "gpt2-base"
+  },
+  "q08": {
+    "A": "tinyllama-qlora",
+    "B": "gpt2-lora",
+    "C": "gpt2-base",
+    "D": "tinyllama-base"
+  },
+  "q09": {
+    "A": "tinyllama-base",
+    "B": "tinyllama-qlora",
+    "C": "gpt2-lora",
+    "D": "gpt2-base"
+  },
+  "q10": {
+    "A": "gpt2-base",
+    "B": "gpt2-lora",
+    "C": "tinyllama-qlora",
+    "D": "tinyllama-base"
+  },
+  "q11": {
+    "A": "tinyllama-qlora",
+    "B": "gpt2-base",
+    "C": "tinyllama-base",
+    "D": "gpt2-lora"
+  },
+  "q12": {
+    "A": "gpt2-lora",
+    "B": "tinyllama-qlora",
+    "C": "tinyllama-base",
+    "D": "gpt2-base"
+  },
+  "q13": {
+    "A": "gpt2-lora",
+    "B": "tinyllama-qlora",
+    "C": "gpt2-base",
+    "D": "tinyllama-base"
+  },
+  "q14": {
+    "A": "tinyllama-qlora",
+    "B": "tinyllama-base",
+    "C": "gpt2-lora",
+    "D": "gpt2-base"
+  },
+  "q15": {
+    "A": "gpt2-base",
+    "B": "gpt2-lora",
+    "C": "tinyllama-base",
+    "D": "tinyllama-qlora"
+  },
+  "q16": {
+    "A": "gpt2-base",
+    "B": "tinyllama-base",
+    "C": "tinyllama-qlora",
+    "D": "gpt2-lora"
+  },
+  "q17": {
+    "A": "gpt2-base",
+    "B": "tinyllama-qlora",
+    "C": "tinyllama-base",
+    "D": "gpt2-lora"
+  },
+  "q18": {
+    "A": "gpt2-lora",
+    "B": "tinyllama-qlora",
+    "C": "tinyllama-base",
+    "D": "gpt2-base"
+  },
+  "q19": {
+    "A": "tinyllama-base",
+    "B": "tinyllama-qlora",
+    "C": "gpt2-base",
+    "D": "gpt2-lora"
+  },
+  "q20": {
+    "A": "tinyllama-base",
+    "B": "gpt2-base",
+    "C": "gpt2-lora",
+    "D": "tinyllama-qlora"
+  }
+}
